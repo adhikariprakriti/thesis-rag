@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(page_title="Thesis Q&A", page_icon="📄")
-st.title("📄 Chat with my Thesis")
+st.title("Chat with my Thesis")
 st.caption("Software Development Practices in Simulation Modeling")
 
 @st.cache_resource
