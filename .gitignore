@@ -1,0 +1,5 @@
+venv/
+.env
+thesis.pdf
+chroma_db/
+__pycache__/
