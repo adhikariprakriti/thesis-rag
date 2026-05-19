@@ -1,4 +1,8 @@
+import os
+import shutil
 import streamlit as st
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
@@ -12,13 +16,45 @@ st.set_page_config(page_title="Thesis Q&A", page_icon="📄")
 st.title("Chat with my Thesis")
 st.caption("Software Development Practices in Simulation Modeling")
 
+DB_DIR = "./chroma_db"
+PDF_PATH = "thesis.pdf"
+
 @st.cache_resource
-def load_chain():
+def get_rag_chain():
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    vectorstore = Chroma(
-        persist_directory="./chroma_db",
-        embedding_function=embeddings
-    )
+    
+    # Check if the database exists and has files. If not, build it dynamically!
+    if not os.path.exists(DB_DIR) or not os.listdir(DB_DIR):
+        st.info("Database not found on server. Initializing vector store from thesis.pdf...")
+        
+        if not os.path.exists(PDF_PATH):
+            st.error(f"Critical Error: '{PDF_PATH}' was not found in the root directory of your repository. Please upload it to GitHub.")
+            st.stop()
+            
+        # Load and split
+        loader = PyMuPDFLoader(PDF_PATH)
+        pages = loader.load()
+        
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1500,
+            chunk_overlap=500,
+            separators=["\n\n", "\n", ".", " "]
+        )
+        chunks = splitter.split_documents(pages)
+        
+        # Build vector store on the server's disk
+        vectorstore = Chroma.from_documents(
+            documents=chunks,
+            embedding=embeddings,
+            persist_directory=DB_DIR
+        )
+    else:
+        # Load existing vectorstore from the deployed directory
+        vectorstore = Chroma(
+            persist_directory=DB_DIR,
+            embedding_function=embeddings
+        )
+        
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     prompt = PromptTemplate.from_template("""
@@ -47,9 +83,10 @@ def load_chain():
     )
     return chain
 
-chain = load_chain()
+# Initialize the chain safely
+chain = get_rag_chain()
 
-# ── Chat history ─────────────────────────────────────────────
+# Chat history 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -57,7 +94,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# ── Chat input ───────────────────────────────────────────────
+# Chat input 
 if question := st.chat_input("Ask a question about the thesis..."):
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
